@@ -34,7 +34,7 @@ def chat_activity(url: str, duration: int, max_messages: int = 400_000,
     count = 0
     t0 = time.monotonic()
     try:
-        chat = ChatDownloader().get_chat(url)
+        chat = ChatDownloader().get_chat(url, max_attempts=3, retry_timeout=2)
         for msg in chat:
             t = msg.get("time_in_seconds")
             if t is None or t < 0:
