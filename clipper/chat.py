@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 
 import numpy as np
 
@@ -16,7 +17,8 @@ HYPE_PATTERNS = [
 _HYPE_RE = re.compile("|".join(HYPE_PATTERNS), re.IGNORECASE)
 
 
-def chat_activity(url: str, duration: int, max_messages: int = 400_000) -> np.ndarray | None:
+def chat_activity(url: str, duration: int, max_messages: int = 400_000,
+                  max_seconds: float = 1200) -> np.ndarray | None:
     """Devuelve un array (1 valor por segundo) con la 'intensidad' del chat.
 
     Usa chat-downloader (Twitch VODs, YouTube). Si no hay chat disponible
@@ -30,6 +32,7 @@ def chat_activity(url: str, duration: int, max_messages: int = 400_000) -> np.nd
 
     activity = np.zeros(max(duration, 1), dtype=np.float32)
     count = 0
+    t0 = time.monotonic()
     try:
         chat = ChatDownloader().get_chat(url)
         for msg in chat:
@@ -38,12 +41,13 @@ def chat_activity(url: str, duration: int, max_messages: int = 400_000) -> np.nd
                 continue
             sec = int(t)
             if sec >= len(activity):
-                continue
+                break  # ya pasamos lo que tenemos de audio (directo en marcha)
             text = msg.get("message") or ""
             # 1 punto por mensaje + bonus si es un mensaje de "hype"
             activity[sec] += 1.0 + (1.5 if _HYPE_RE.search(text) else 0.0)
             count += 1
-            if count >= max_messages:
+            if count >= max_messages or time.monotonic() - t0 > max_seconds:
+                print("  [chat] Límite de tiempo/mensajes alcanzado; se usa lo leído.")
                 break
     except Exception as exc:  # el chat es opcional: nunca debe romper la herramienta
         print(f"  [chat] No se pudo leer el chat ({type(exc).__name__}: {exc}). Se usa solo el audio.")

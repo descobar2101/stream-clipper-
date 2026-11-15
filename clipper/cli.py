@@ -12,7 +12,8 @@ from pathlib import Path
 from . import __version__
 from .audio import loudness_per_second
 from .chat import chat_activity
-from .download import download_audio, download_section, get_info, is_url
+from .download import (download_audio, download_hls_range, download_section, get_info,
+                       is_url, is_vod_url, pick_hls_format)
 from .render import make_srt, render_clip
 from .scoring import pick_highlights, score_timeline
 
@@ -74,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="stream-clipper-"))
     remote = is_url(args.source)
+    live = False
 
     try:
         # 1) Fuente
@@ -81,19 +83,27 @@ def main(argv: list[str] | None = None) -> int:
             print("» Leyendo información del stream...")
             info = get_info(args.source, args.cookies)
             title = info.get("title") or "stream"
-            if info.get("is_live") or info.get("live_status") == "is_live":
+            live = bool(info.get("is_live") or info.get("live_status") == "is_live")
+            if live and not is_vod_url(args.source, info):
                 print(
-                    "\nERROR: este link es un directo que está en marcha ahora mismo.\n"
-                    "La herramienta necesita un video ya grabado (VOD).\n"
-                    "  • Twitch: entra al canal → pestaña 'Videos' → copia el link "
-                    "(tiene la forma twitch.tv/videos/123456789).\n"
+                    "\nERROR: este link es el canal en directo, no un video.\n"
+                    "  • Twitch: entra al canal → pestaña 'Videos' → copia el link del stream\n"
+                    "    (tiene la forma twitch.tv/videos/123456789). Funciona aunque el\n"
+                    "    directo siga en marcha: se usa todo lo emitido hasta ahora.\n"
                     "  • YouTube: espera a que termine el directo y usa el link del video.",
                     file=sys.stderr,
                 )
                 return 1
+            if live:
+                print("  (El directo sigue en marcha: se usará lo emitido hasta ahora.)")
             print(f"  {title}  ({hms(info.get('duration') or 0)})")
             print("» Descargando solo el audio para analizarlo...")
-            audio_src = download_audio(args.source, tmp, args.cookies)
+            if live:
+                afmt = pick_hls_format(info, audio_only=True)
+                audio_src, _ = download_hls_range(afmt["url"], tmp / "audio.ts",
+                                                  headers=afmt.get("http_headers"))
+            else:
+                audio_src = download_audio(args.source, tmp, args.cookies)
         else:
             src = Path(args.source)
             if not src.exists():
@@ -151,7 +161,13 @@ def main(argv: list[str] | None = None) -> int:
             }
             if not args.dry_run:
                 print(f"\n» Clip {i}/{len(highlights)} ({hms(h.start)})")
-                if remote:
+                if remote and live:
+                    vfmt = pick_hls_format(info, audio_only=False, max_height=args.max_height)
+                    piece, seg_start = download_hls_range(vfmt["url"], tmp / f"raw_{i:02d}.ts",
+                                                          h.start, h.end,
+                                                          headers=vfmt.get("http_headers"))
+                    clip_start, clip_dur = h.start - seg_start, h.end - h.start
+                elif remote:
                     piece = download_section(args.source, h.start, h.end, tmp / f"raw_{i:02d}.mp4",
                                              args.cookies, args.max_height)
                     clip_start, clip_dur = None, None
