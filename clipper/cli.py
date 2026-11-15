@@ -81,6 +81,16 @@ def main(argv: list[str] | None = None) -> int:
             print("» Leyendo información del stream...")
             info = get_info(args.source, args.cookies)
             title = info.get("title") or "stream"
+            if info.get("is_live") or info.get("live_status") == "is_live":
+                print(
+                    "\nERROR: este link es un directo que está en marcha ahora mismo.\n"
+                    "La herramienta necesita un video ya grabado (VOD).\n"
+                    "  • Twitch: entra al canal → pestaña 'Videos' → copia el link "
+                    "(tiene la forma twitch.tv/videos/123456789).\n"
+                    "  • YouTube: espera a que termine el directo y usa el link del video.",
+                    file=sys.stderr,
+                )
+                return 1
             print(f"  {title}  ({hms(info.get('duration') or 0)})")
             print("» Descargando solo el audio para analizarlo...")
             audio_src = download_audio(args.source, tmp, args.cookies)
