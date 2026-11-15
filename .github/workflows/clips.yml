@@ -1,0 +1,76 @@
+name: Sacar clips de un stream
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Link del stream / VOD (Twitch, YouTube, Kick...)"
+        required: true
+        type: string
+      num_clips:
+        description: "Cuántos clips"
+        required: false
+        default: "8"
+        type: string
+      length:
+        description: "Duración de cada clip (segundos)"
+        required: false
+        default: "30"
+        type: string
+      vertical:
+        description: "Formato vertical 9:16 (TikTok / Shorts / Reels)"
+        required: false
+        default: true
+        type: boolean
+      subs:
+        description: "Subtítulos automáticos (más lento)"
+        required: false
+        default: false
+        type: boolean
+      subs_lang:
+        description: "Idioma de los subtítulos (es, en... vacío = automático)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  clips:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          if [ "${{ inputs.subs }}" = "true" ]; then pip install -r requirements-subs.txt; fi
+
+      - name: Sacar clips
+        env:
+          URL: ${{ inputs.url }}
+          NUM: ${{ inputs.num_clips }}
+          LEN: ${{ inputs.length }}
+          SUBS_LANG: ${{ inputs.subs_lang }}
+        run: |
+          ARGS=(-n "$NUM" -l "$LEN" -o clips)
+          if [ "${{ inputs.vertical }}" = "true" ]; then ARGS+=(--vertical); fi
+          if [ "${{ inputs.subs }}" = "true" ]; then
+            ARGS+=(--subs)
+            if [ -n "$SUBS_LANG" ]; then ARGS+=(--subs-lang "$SUBS_LANG"); fi
+          fi
+          python -m clipper "$URL" "${ARGS[@]}"
+
+      - name: Subir los clips
+        uses: actions/upload-artifact@v4
+        with:
+          name: clips
+          path: clips/
+          retention-days: 7

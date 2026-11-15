@@ -1,0 +1,3 @@
+yt-dlp>=2025.1.1
+numpy>=1.24
+chat-downloader>=0.2.8

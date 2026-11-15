@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+clips/
+*.mp4
+*.mkv
+*.webm
+*.m4a
+cookies.txt
